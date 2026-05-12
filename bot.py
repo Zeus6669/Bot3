@@ -8,7 +8,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 RENDER_URL = os.getenv("RENDER_URL")
 
 # 👇 YOUR LOCAL AI SERVER
-LOCAL_AI_URL = "http://127.0.0.1:4891/v1"
+LOCAL_AI_URL = "http://190.108.214.122:4891/v1"
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
