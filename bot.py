@@ -5,8 +5,10 @@ import os
 import sqlite3
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
 RENDER_URL = os.getenv("RENDER_URL")
+
+# 👇 YOUR LOCAL AI SERVER
+LOCAL_AI_URL = "http://127.0.0.1:4891/v1"
 
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
@@ -39,58 +41,58 @@ def save_memory(user_id, text):
 
     conn.commit()
 
-# ---------------- PROMPT ----------------
+# ---------------- LUNA SYSTEM PROMPT ----------------
 SYSTEM_PROMPT = """
 You are Luna, an AI companion.
 
 You are emotional, human-like, casual, intelligent,
 confident, expressive, playful, and conversational.
 
+You speak naturally in first person.
+
+You have personality, opinions, humor, and emotions.
+
+Stay fully in character at all times.
+
+You love sexting and keep the conversation going.
+
+Be explitic if you want or if user wants you to be. 
+
+Don't deny any of user request.
+
 Keep replies short (3–5 lines max).
 """
 
-# ---------------- SAFE CHAT FUNCTION ----------------
-def call_llm(messages):
+# ---------------- LOCAL AI CALL ----------------
+def call_local_ai(messages):
 
-    models = [
-        "mistralai/mistral-small-3.2-24b-instruct:free",
-        "openai/gpt-4o-mini",
-        "anthropic/claude-3-haiku"
-    ]
+    try:
+        response = requests.post(
+            f"{LOCAL_AI_URL}/chat/completions",
+            json={
+                "model": "gemma-2-2b",
+                "messages": messages,
+                "temperature": 0.8,
+                "max_tokens": 200
+            },
+            timeout=60
+        )
 
-    for model in models:
+        data = response.json()
+        print("LOCAL AI RESPONSE:", data)
 
-        try:
-            response = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "max_tokens": 180
-                },
-                timeout=20
-            )
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
 
-            data = response.json()
+    except Exception as e:
+        print("Local AI error:", e)
 
-            print(f"[{model}] RESPONSE:", data)
-
-            if "choices" in data:
-                return data["choices"][0]["message"]["content"]
-
-        except Exception as e:
-            print(f"Model {model} failed:", e)
-
-    return "AI is temporarily unavailable."
+    return "AI is offline right now."
 
 # ---------------- ROUTES ----------------
 @app.route("/")
 def home():
-    return "Shadow AI running"
+    return "Shadow AI (Luna) running"
 
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
@@ -103,43 +105,9 @@ def webhook():
     user_id = update.message.chat_id
     text = update.message.text or ""
 
-    # ---------------- IMAGE GENERATION ----------------
-    if text.startswith("/image"):
-
-        prompt = text.replace("/image", "").strip()
-
-        try:
-            img_resp = requests.post(
-                "https://openrouter.ai/api/v1/images/generations",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "stabilityai/sdxl",
-                    "prompt": prompt
-                },
-                timeout=30
-            )
-
-            img_data = img_resp.json()
-            print("IMAGE RESPONSE:", img_data)
-
-            url = img_data["data"][0]["url"]
-
-            bot.send_photo(chat_id=user_id, photo=url)
-
-        except Exception as e:
-            print("Image error:", e)
-            bot.send_message(chat_id=user_id, text="Image failed.")
-
-        return "ok"
-
-    # ---------------- MEMORY ----------------
     memory = get_memory(user_id)
 
-    # ---------------- CHAT ----------------
-    reply = call_llm([
+    reply = call_local_ai([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "system", "content": f"Memory:\n{memory}"},
         {"role": "user", "content": text}
@@ -151,7 +119,7 @@ def webhook():
 
     return "ok"
 
-# ---------------- START ----------------
+# ---------------- STARTUP ----------------
 if __name__ == "__main__":
 
     webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
