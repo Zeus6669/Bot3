@@ -64,8 +64,14 @@ def webhook():
             }
         )
 
-        data = response.json()
-        ai_reply = data["choices"][0]["message"]["content"]
+       data = response.json()
+
+print("OpenRouter response:", data)
+
+try:
+    ai_reply = data["choices"][0]["message"]["content"]
+except Exception:
+    ai_reply = "AI error. Check logs." 
 
         bot.send_message(
             chat_id=update.message.chat_id,
