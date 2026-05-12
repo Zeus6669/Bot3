@@ -78,9 +78,12 @@ def webhook():
 
     return "ok"
 
-@app.route("/")
-def home():
-    return "Shadow AI running"
+@app.route("/webhook", methods=["POST"])
+def webhook():
+
+    # handle Telegram update here
+
+    return "ok"
 
 if __name__ == "__main__":
 
