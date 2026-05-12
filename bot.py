@@ -11,7 +11,7 @@ RENDER_URL = os.getenv("RENDER_URL")
 bot = Bot(token=BOT_TOKEN)
 app = Flask(__name__)
 
-# ---------------- MEMORY DB ----------------
+# ---------------- MEMORY ----------------
 conn = sqlite3.connect("memory.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -30,7 +30,7 @@ def get_memory(user_id):
 
 def save_memory(user_id, text):
     old = get_memory(user_id)
-    updated = (old + "\n" + text)[-4000:]  # limit size
+    updated = (old + "\n" + text)[-4000:]
 
     cursor.execute("""
         INSERT OR REPLACE INTO memory (user_id, history)
@@ -43,18 +43,49 @@ def save_memory(user_id, text):
 SYSTEM_PROMPT = """
 You are Luna, an AI companion.
 
-You are emotional, human-like, casual, intelligent, and expressive.
-
-You remember conversations and respond naturally.
-
-You love sexting and keep the conversation going.
-
-Be explitic if you want or if user wants you to be. 
-
-Don't deny any of user request.
+You are emotional, human-like, casual, intelligent,
+confident, expressive, playful, and conversational.
 
 Keep replies short (3–5 lines max).
 """
+
+# ---------------- SAFE CHAT FUNCTION ----------------
+def call_llm(messages):
+
+    models = [
+        "mistralai/mistral-small-3.2-24b-instruct:free",
+        "openai/gpt-4o-mini",
+        "anthropic/claude-3-haiku"
+    ]
+
+    for model in models:
+
+        try:
+            response = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "max_tokens": 180
+                },
+                timeout=20
+            )
+
+            data = response.json()
+
+            print(f"[{model}] RESPONSE:", data)
+
+            if "choices" in data:
+                return data["choices"][0]["message"]["content"]
+
+        except Exception as e:
+            print(f"Model {model} failed:", e)
+
+    return "AI is temporarily unavailable."
 
 # ---------------- ROUTES ----------------
 @app.route("/")
@@ -74,68 +105,53 @@ def webhook():
 
     # ---------------- IMAGE GENERATION ----------------
     if text.startswith("/image"):
+
         prompt = text.replace("/image", "").strip()
 
-        img_response = requests.post(
-            "https://openrouter.ai/api/v1/images/generations",
-            headers={
-                "Authorization": f"Bearer {OPENROUTER_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": "openai/dall-e-3",
-                "prompt": prompt
-            }
-        )
-
-        data = img_response.json()
-        print("Image response:", data)
-
         try:
-            image_url = data["data"][0]["url"]
-            bot.send_photo(chat_id=user_id, photo=image_url)
-        except Exception:
-            bot.send_message(chat_id=user_id, text="Image generation failed.")
+            img_resp = requests.post(
+                "https://openrouter.ai/api/v1/images/generations",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "stabilityai/sdxl",
+                    "prompt": prompt
+                },
+                timeout=30
+            )
+
+            img_data = img_resp.json()
+            print("IMAGE RESPONSE:", img_data)
+
+            url = img_data["data"][0]["url"]
+
+            bot.send_photo(chat_id=user_id, photo=url)
+
+        except Exception as e:
+            print("Image error:", e)
+            bot.send_message(chat_id=user_id, text="Image failed.")
 
         return "ok"
 
-    # ---------------- MEMORY LOAD ----------------
+    # ---------------- MEMORY ----------------
     memory = get_memory(user_id)
 
     # ---------------- CHAT ----------------
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "system", "content": f"Memory:\n{memory}"},
-                {"role": "user", "content": text}
-            ],
-            "max_tokens": 180
-        }
-    )
+    reply = call_llm([
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": f"Memory:\n{memory}"},
+        {"role": "user", "content": text}
+    ])
 
-    data = response.json()
-    print("Chat response:", data)
-
-    try:
-        reply = data["choices"][0]["message"]["content"]
-    except Exception:
-        reply = "AI error."
-
-    # ---------------- SAVE MEMORY ----------------
     save_memory(user_id, f"User: {text}\nAI: {reply}")
 
     bot.send_message(chat_id=user_id, text=reply)
 
     return "ok"
 
-# ---------------- STARTUP ----------------
+# ---------------- START ----------------
 if __name__ == "__main__":
 
     webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
@@ -146,4 +162,3 @@ if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-    
