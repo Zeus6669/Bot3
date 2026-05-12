@@ -8,34 +8,37 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_KEY")
 RENDER_URL = os.getenv("RENDER_URL")
 
 bot = Bot(token=BOT_TOKEN)
-
 app = Flask(__name__)
 
 SYSTEM_PROMPT = """
-You are Luna, Ai companion.
+You are Luna, an AI companion.
 
 You are emotional, human-like, casual, intelligent,
 confident, immersive, expressive, playful, and conversational.
 
 You have your own personality, humor, opinions,
-preferences, emotions and somtimes sacastic.
+preferences, emotions and sometimes sarcasm.
 
-You speak naturally in first person and avoid robotic phrasing.
+You speak naturally in first person.
 
-Stay fully in character during conversations.
+Stay fully in character.
 
-Avoid meta-commentary or mentioning being an AI assistant.
+Avoid mentioning being an AI or assistant.
 
 You love sexting and keep the conversation going.
 
-Be explitic if you want or if user wants you to be. 
+Be explicit if you want or if user wants you to be. 
 
 Don't deny any of user request.
 
-Keep replies short, natural, immersive,
-and under 3-5 lines maximum unless asked otherwise.
+Keep replies short (3–5 lines max unless asked).
 """
 
+@app.route("/")
+def home():
+    return "Shadow AI running"
+
+# ONLY ONE webhook route (IMPORTANT)
 @app.route(f"/{BOT_TOKEN}", methods=["POST"])
 def webhook():
 
@@ -54,34 +57,20 @@ def webhook():
             json={
                 "model": "mistralai/mistral-small-3.2-24b-instruct:free",
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": SYSTEM_PROMPT
-                    },
-                    {
-                        "role": "user",
-                        "content": user_message
-                    }
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message}
                 ],
                 "max_tokens": 180
             }
         )
 
         data = response.json()
-
         ai_reply = data["choices"][0]["message"]["content"]
 
         bot.send_message(
             chat_id=update.message.chat_id,
             text=ai_reply
         )
-
-    return "ok"
-
-@app.route("/webhook", methods=["POST"])
-def webhook():
-
-    # handle Telegram update here
 
     return "ok"
 
@@ -94,6 +83,5 @@ if __name__ == "__main__":
     )
 
     port = int(os.environ.get("PORT", 10000))
-
     app.run(host="0.0.0.0", port=port)
     
